@@ -176,11 +176,10 @@ class RBDTestCase(test.TestCase):
             args = [client.ioctx, str(self.volume_name),
                     self.volume_size * units.Gi, order]
             kwargs = {'old_format': False,
-                      'features': self.mock_rbd.RBD_FEATURE_LAYERING}
+                      'features': client.features}
             self.mock_rbd.RBD.create.assert_called_once_with(*args, **kwargs)
-            client.__enter__.assert_called_once()
-            client.__exit__.assert_called_once()
-            mock_supports_layering.assert_called_once()
+            client.__enter__.assert_called_once_with()
+            client.__exit__.assert_called_once_with(None, None, None)
 
     @common_mocks
     def test_manage_existing_get_size(self):
@@ -749,8 +748,9 @@ class RBDTestCase(test.TestCase):
 
         args = [client_stack[0].ioctx, str(src_image), str(src_snap),
                 client_stack[1].ioctx, str(self.volume_name)]
-        kwargs = {'features': self.mock_rbd.RBD_FEATURE_LAYERING}
-        self.mock_rbd.RBD.clone.assert_called_once_with(*args, **kwargs)
+        kwargs = {'features': client.features}
+        self.mock_rbd.RBD.return_value.clone.assert_called_once_with(
+            *args, **kwargs)
         self.assertEqual(client.__enter__.call_count, 2)
 
     @common_mocks
