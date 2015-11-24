@@ -497,8 +497,8 @@ class RBDDriver(driver.VolumeDriver):
 
         LOG.debug("creating volume '%s'" % (volume['name']))
 
-        old_format = True
-        features = 0
+        #old_format = True
+        #features = 0
         chunk_size = CONF.rbd_store_chunk_size * units.Mi
         order = int(math.log(chunk_size, 2))
 
