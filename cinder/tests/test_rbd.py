@@ -101,6 +101,38 @@ def common_mocks(f):
     return _common_inner_inner1
 
 
+def uncommon_mocks(f):
+    """Decorator to set mocks common to a few tests.
+
+    The point of doing these mocks here is so that we don't accidentally set
+    mocks that can't/don't get unset.
+    """
+    def _common_inner_inner1(inst, *args, **kwargs):
+        @mock.patch('cinder.volume.drivers.rbd.RBDVolumeProxy')
+        @mock.patch('cinder.volume.drivers.rbd.RADOSClient')
+        @mock.patch('cinder.backup.drivers.ceph.rbd')
+        @mock.patch('cinder.backup.drivers.ceph.rados')
+        def _common_inner_inner2(mock_rados, mock_rbd, mock_client,
+                                 mock_proxy):
+            inst.mock_rbd = mock_rbd
+            inst.mock_rados = mock_rados
+            inst.mock_client = mock_client
+            inst.mock_proxy = mock_proxy
+            inst.mock_rbd.RBD.Error = Exception
+            inst.mock_rados.Error = Exception
+            inst.mock_rbd.ImageBusy = MockImageBusyException
+            inst.mock_rbd.ImageNotFound = MockImageNotFoundException
+            inst.mock_rbd.ImageExists = MockImageExistsException
+
+            inst.driver.rbd = inst.mock_rbd
+            inst.driver.rados = inst.mock_rados
+            return f(inst, *args, **kwargs)
+
+        return _common_inner_inner2()
+
+    return _common_inner_inner1
+
+
 CEPH_MON_DUMP = """dumped monmap epoch 1
 { "epoch": 1,
   "fsid": "33630410-6d93-4d66-8e42-3b953cf194aa",
@@ -250,29 +282,6 @@ class RBDTestCase(test.TestCase):
         #make sure the exception was raised
         self.assertEqual(RAISED_EXCEPTIONS,
                          [self.mock_rbd.ImageExists])
-
-    @common_mocks
-    def test_create_volume_no_layering(self):
-        client = self.mock_client.return_value
-        client.__enter__.return_value = client
-
-        with mock.patch.object(self.driver, '_supports_layering') as \
-                mock_supports_layering:
-            mock_supports_layering.return_value = False
-            self.mock_rbd.RBD.create = mock.Mock()
-
-            self.driver.create_volume(self.volume)
-
-            chunk_size = self.cfg.rbd_store_chunk_size * units.Mi
-            order = int(math.log(chunk_size, 2))
-            args = [client.ioctx, str(self.volume_name),
-                    self.volume_size * units.Gi, order]
-            kwargs = {'old_format': True,
-                      'features': 0}
-            self.mock_rbd.RBD.create.assert_called_once_with(*args, **kwargs)
-            client.__enter__.assert_called_once()
-            client.__exit__.assert_called_once()
-            mock_supports_layering.assert_called_once()
 
     @common_mocks
     def test_delete_backup_snaps(self):
@@ -724,7 +733,7 @@ class RBDTestCase(test.TestCase):
             self.assertDictMatch(expected, actual)
             self.assertTrue(mock_get_mon_addrs.called)
 
-    @common_mocks
+    @uncommon_mocks
     def test_clone(self):
         src_pool = u'images'
         src_image = u'image-name'
