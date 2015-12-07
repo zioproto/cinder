@@ -244,6 +244,13 @@ class RADOSClient(object):
     def __exit__(self, type_, value, traceback):
         self.driver._disconnect_from_rados(self.cluster, self.ioctx)
 
+    @property
+    def features(self):
+        features = self.cluster.conf_get('rbd_default_features')
+        if ((features is None) or (int(features) == 0)):
+            features = self.driver.rbd.RBD_FEATURE_LAYERING
+        return int(features)
+
 
 class RBDDriver(driver.VolumeDriver):
     """Implements RADOS block device (RBD) volume commands."""
@@ -471,7 +478,7 @@ class RBDDriver(driver.VolumeDriver):
                            'dest': dest_name})
                 self.rbd.RBD().clone(client.ioctx, src_name, clone_snap,
                                      client.ioctx, dest_name,
-                                     features=self.rbd.RBD_FEATURE_LAYERING)
+                                     features=client.features)
             except Exception as exc:
                 src_volume.unprotect_snap(clone_snap)
                 src_volume.remove_snap(clone_snap)
@@ -490,21 +497,18 @@ class RBDDriver(driver.VolumeDriver):
 
         LOG.debug("creating volume '%s'" % (volume['name']))
 
-        old_format = True
-        features = 0
+        #old_format = True
+        #features = 0
         chunk_size = CONF.rbd_store_chunk_size * units.Mi
         order = int(math.log(chunk_size, 2))
-        if self._supports_layering():
-            old_format = False
-            features = self.rbd.RBD_FEATURE_LAYERING
 
         with RADOSClient(self) as client:
             self.rbd.RBD().create(client.ioctx,
                                   strutils.safe_encode(volume['name']),
                                   size,
                                   order,
-                                  old_format=old_format,
-                                  features=features)
+                                  old_format=False,
+                                  features=client.features)
 
     def _flatten(self, pool, volume_name):
         LOG.debug('flattening %(pool)s/%(img)s' %
@@ -523,7 +527,7 @@ class RBDDriver(driver.VolumeDriver):
                                      strutils.safe_encode(src_snap),
                                      dest_client.ioctx,
                                      strutils.safe_encode(volume['name']),
-                                     features=self.rbd.RBD_FEATURE_LAYERING)
+                                     features=src_client.features)
 
     def _resize(self, volume, **kwargs):
         size = kwargs.get('size', None)
